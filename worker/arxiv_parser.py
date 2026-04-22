@@ -220,7 +220,7 @@ class ArxivParser:
             sort_order=sort_order,
             categories=categories,
         )
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
             resp = await client.get(url)
             resp.raise_for_status()
         return self.parse_response(resp.text)

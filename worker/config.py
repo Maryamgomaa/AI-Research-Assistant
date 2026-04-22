@@ -54,7 +54,7 @@ class Config:
 
     # ── arXiv ────────────────────────────────────────────────────────────
     ARXIV_MAX_RESULTS: int = int(os.getenv("ARXIV_MAX_RESULTS", "10"))
-    ARXIV_BASE_URL: str = "http://export.arxiv.org/api/query"
+    ARXIV_BASE_URL: str = "https://export.arxiv.org/api/query"
 
     # ── Jetson Nano hardware info ──────────────────────────────────────────
     DEVICE_INFO: str = os.getenv("DEVICE_INFO", "Jetson Nano 4GB")
