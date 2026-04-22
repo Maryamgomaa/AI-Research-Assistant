@@ -1,14 +1,8 @@
-# nixpacks.toml — Railway Nixpacks build config
+# nixpacks.toml — Railway build configuration
+# Nixpacks auto-detects Python from requirements.txt
 
 [phases.setup]
-aptPkgs = ["libmupdf-dev", "mupdf-tools"]
-
-[phases.install]
-cmds = ["python -m pip install -r requirements.txt"]
-
-# Explicitly empty build phase to override any cached build.sh
-[phases.build]
-cmds = []
+aptPkgs = ["...", "libmupdf-dev", "mupdf-tools"]
 
 [start]
-cmd = "python -m uvicorn worker.main:app --host 0.0.0.0 --port ${PORT:-8000}"
+cmd = "uvicorn worker.main:app --host 0.0.0.0 --port ${PORT:-8000}"
