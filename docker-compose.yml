@@ -1,0 +1,80 @@
+version: "3.8"
+
+# ============================================================
+# AI Research Assistant — Docker Compose
+# Services: Qdrant + Ingestion Worker + n8n
+# Usage: docker-compose up -d
+# ============================================================
+
+services:
+
+  # ── Qdrant Vector Database ────────────────────────────────
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"   # REST API
+      - "6334:6334"   # gRPC
+    volumes:
+      - qdrant_storage:/qdrant/storage
+    environment:
+      QDRANT__STORAGE__ON_DISK_PAYLOAD: "true"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/readyz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Ingestion Worker (FastAPI on Jetson) ──────────────────
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: ingestion_worker
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - /tmp/arxiv_pdfs:/tmp/arxiv_pdfs
+    environment:
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - EMBEDDING_DEVICE=cpu
+      - EMBEDDING_MODEL=sentence-transformers/paraphrase-multilingual-mpnet-base-v2
+      - LOG_PATH=/tmp/ingestion.log
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  # ── n8n Workflow Orchestrator ─────────────────────────────
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./n8n/workflows.json:/data/workflows.json:ro
+    environment:
+      - N8N_HOST=0.0.0.0
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - EXECUTIONS_PROCESS=main
+      - NODE_ENV=production
+      - WEBHOOK_URL=http://localhost:5678/
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  qdrant_storage:
+    driver: local
+  n8n_data:
+    driver: local

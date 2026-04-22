@@ -1,0 +1,8 @@
+# nixpacks.toml — tells Railway/Nixpacks what system packages to install
+# Required for PyMuPDF (PDF extraction)
+
+[phases.setup]
+aptPkgs = ["libmupdf-dev", "mupdf-tools"]
+
+[start]
+cmd = "uvicorn worker.main:app --host 0.0.0.0 --port ${PORT:-8000}"

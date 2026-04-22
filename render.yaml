@@ -1,0 +1,80 @@
+# ============================================================
+# Render.com — Service Configuration
+# Docs: https://docs.render.com/blueprint-spec
+# ============================================================
+
+services:
+  - type: web
+    name: ai-research-assistant
+    runtime: python
+    region: frankfurt          # EU — change to oregon/ohio for US
+    plan: free                 # free tier; upgrade to starter ($7/mo) for always-on
+
+    # ── Build & Start ──────────────────────────────────────────
+    buildCommand: "chmod +x build.sh && ./build.sh"
+    startCommand: "uvicorn worker.main:app --host 0.0.0.0 --port $PORT"
+
+    # ── Environment Variables ──────────────────────────────────
+    # Set these in Render Dashboard → Environment tab (safer than here)
+    envVars:
+      # Groq LLM
+      - key: GROQ_API_KEY
+        sync: false            # set manually in dashboard
+      - key: GROQ_MODEL
+        value: llama3-8b-8192
+
+      # Qdrant Cloud (free tier at https://cloud.qdrant.io)
+      - key: QDRANT_HOST
+        sync: false            # e.g. abc123.us-east4-0.gcp.cloud.qdrant.io
+      - key: QDRANT_PORT
+        value: "6333"
+      - key: QDRANT_API_KEY
+        sync: false            # from Qdrant Cloud dashboard
+      - key: QDRANT_COLLECTION
+        value: research_papers
+      - key: QDRANT_VECTOR_SIZE
+        value: "768"
+
+      # Embedding
+      - key: EMBEDDING_MODEL
+        value: sentence-transformers/paraphrase-multilingual-mpnet-base-v2
+      - key: EMBEDDING_DEVICE
+        value: cpu
+      - key: EMBEDDING_BATCH_SIZE
+        value: "16"
+
+      # App config
+      - key: WORKER_PORT
+        value: "10000"
+      - key: PDF_CACHE_DIR
+        value: /tmp/arxiv_pdfs
+      - key: LOG_PATH
+        value: /tmp/ingestion.log
+      - key: PYTHONPATH
+        value: /opt/render/project/src
+      - key: LLM_TEMPERATURE
+        value: "0.2"
+      - key: LLM_MAX_TOKENS
+        value: "2048"
+      - key: CHUNK_SIZE
+        value: "700"
+      - key: CHUNK_OVERLAP
+        value: "120"
+
+      # Auth (CHANGE IN PRODUCTION!)
+      - key: SECRET_KEY
+        generateValue: true    # Render auto-generates a secure random value
+      - key: ALLOW_ANONYMOUS_LLM_WEBHOOK
+        value: "0"             # disabled in production
+      - key: WEBHOOK_LLM_SECRET
+        generateValue: true
+
+    # ── Health Check ───────────────────────────────────────────
+    healthCheckPath: /health
+
+    # ── Disk (optional — for PDF cache persistence) ────────────
+    # Uncomment if you want PDFs to survive restarts (requires paid plan)
+    # disk:
+    #   name: pdf-cache
+    #   mountPath: /tmp/arxiv_pdfs
+    #   sizeGB: 1

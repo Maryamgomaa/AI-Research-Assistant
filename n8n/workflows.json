@@ -1,0 +1,472 @@
+{
+  "name": "Master AI Research Workflows",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "research-topic",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook-input",
+      "name": "Researcher Input",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:11434/api/generate",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "model", "value": "mistral" },
+            { "name": "prompt", "value": "=Given topic: \"{{ $json.body.topic }}\"\n\nGenerate 3 arXiv search queries. Return JSON only:\n{\"queries\":[\"q1\",\"q2\",\"q3\"],\"english_translation\":null,\"key_concepts\":[\"c1\",\"c2\"]}" },
+            { "name": "stream", "value": false },
+            { "name": "options", "value": { "temperature": 0.1 } }
+          ]
+        },
+        "options": {}
+      },
+      "id": "query-expansion",
+      "name": "LLM Query Expansion",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [250, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const topic = $('Researcher Input').first().json.body.topic;\nconst raw = $json.response || '';\nlet queries;\ntry {\n  const clean = raw.replace(/\\u0060\\u0060\\u0060json|\\u0060\\u0060\\u0060/g,'').trim();\n  const parsed = JSON.parse(clean);\n  queries = parsed.queries || [topic];\n} catch(e) {\n  queries = [topic];\n}\nreturn queries.map(q => ({json: {query: q, original_topic: topic}}));"
+      },
+      "id": "parse-queries",
+      "name": "Parse Expanded Queries",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [500, 0]
+    },
+    {
+      "parameters": {
+        "url": "=http://export.arxiv.org/api/query?search_query=all:{{ encodeURIComponent($json.query) }}&sortBy=submittedDate&sortOrder=descending&max_results=5",
+        "responseFormat": "text",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "arxiv-search",
+      "name": "Search arXiv",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [750, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const xml = $json.data;\nconst entries = [];\nconst entryMatches = xml.matchAll(/<entry>(.*?)<\\/entry>/gs);\nfor (const match of entryMatches) {\n  const entry = match[1];\n  const getId = (tag) => { const m = entry.match(new RegExp('<' + tag + '[^>]*>(.*?)<\\\\/' + tag + '>', 's')); return m ? m[1].trim() : ''; };\n  const rawId = getId('id');\n  const arxivId = rawId.split('/abs/').pop();\n  const title = getId('title').replace(/\\s+/g,' ');\n  const summary = getId('summary').replace(/\\s+/g,' ');\n  const published = getId('published');\n  const authors = [...entry.matchAll(/<name>(.*?)<\\/name>/g)].map(m=>m[1].trim());\n  const pdfUrl = rawId.replace('/abs/','/pdf/') + '.pdf';\n  const absUrl = rawId;\n  const catMatch = entry.match(/primary_category term=\"([^\"]+)\"/);\n  const primaryCat = catMatch ? catMatch[1] : '';\n  entries.push({json: {arxiv_id: arxivId, title, abstract: summary, authors, published, pdf_url: pdfUrl, abs_url: absUrl, primary_category: primaryCat}});\n}\nreturn entries;"
+      },
+      "id": "parse-arxiv",
+      "name": "Parse arXiv XML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1000, 0]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.pdf_url }}",
+        "method": "HEAD",
+        "options": {
+          "allowUnauthorizedCerts": false,
+          "redirect": { "redirect": { "followRedirects": true } }
+        }
+      },
+      "id": "check-access",
+      "name": "Validate PDF Access",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1250, 0],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false },
+          "conditions": [
+            {
+              "id": "status-check",
+              "leftValue": "={{ $json.statusCode }}",
+              "rightValue": 400,
+              "operator": { "type": "number", "operation": "lt" }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "filter-accessible",
+      "name": "Accessible?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1500, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8000/webhook/ingest",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-Webhook-Secret", "value": "dev-n8n-webhook-secret" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ papers: [$json] }) }}",
+        "options": {}
+      },
+      "id": "trigger-ingestion",
+      "name": "Trigger Jetson Ingestion",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1750, -80]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{json: {status: 'blocked', pdf_url: $json.pdf_url, arxiv_id: $json.arxiv_id, reason: 'PDF not publicly accessible'}}];"
+      },
+      "id": "log-blocked",
+      "name": "Log Blocked Paper",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1750, 100]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ingestion-complete",
+        "responseMode": "lastNode"
+      },
+      "id": "webhook-ingest",
+      "name": "Ingestion Complete",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [0, 350]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.body.status }}",
+              "rightValue": "success",
+              "operator": {"type": "string", "operation": "equals"}
+            }
+          ]
+        }
+      },
+      "id": "check-success",
+      "name": "Success?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [250, 350]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8000/webhook/report",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-Webhook-Secret", "value": "dev-n8n-webhook-secret" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ arxiv_id: $json.body.arxiv_id, topic: $json.body.original_topic || 'research' }) }}"
+      },
+      "id": "trigger-report",
+      "name": "Trigger Report Generation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [500, 350]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ask",
+        "responseMode": "lastNode"
+      },
+      "id": "webhook-ask",
+      "name": "Researcher Question",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [0, 700]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8000/webhook/research",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {"name": "Content-Type", "value": "application/json"},
+            {"name": "X-Webhook-Secret", "value": "dev-n8n-llm-secret"}
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ question: $json.body.question }) }}"
+      },
+      "id": "call-backend-rag",
+      "name": "Backend Groq + RAG",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [250, 700]
+    },
+    {
+      "parameters": {
+        "jsCode": "const u = $input.first().json;\nconst q = $('Researcher Question').first().json.body.question;\nreturn [{ json: { question: q, answer: u.output || '', rag_used: u.rag_used, status: u.status || 'ok' } }];"
+      },
+      "id": "format-response",
+      "name": "Format Final Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [500, 700]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "telegram-bridge",
+        "responseMode": "lastNode"
+      },
+      "id": "tg-webhook-in",
+      "name": "Telegram Bridge In",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [0, 1050]
+    },
+    {
+      "parameters": {
+        "jsCode": "const root = $json.body !== undefined ? $json.body : $json;\nreturn [{ json: { question: String(root.message || ''), history: Array.isArray(root.history) ? root.history : [] } }];"
+      },
+      "id": "tg-normalize",
+      "name": "Normalize Telegram Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [250, 1050]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8000/webhook/research",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {"name": "Content-Type", "value": "application/json"},
+            {"name": "X-Webhook-Secret", "value": "dev-n8n-llm-secret"}
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ question: $json.question, history: $json.history }) }}"
+      },
+      "id": "tg-call-backend",
+      "name": "Call Backend Research",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [500, 1050]
+    },
+    {
+      "parameters": {
+        "jsCode": "const u = $input.first().json;\nreturn [{ json: { output: u.output || '', status: u.status || 'ok', rag_used: u.rag_used } }];"
+      },
+      "id": "tg-format-out",
+      "name": "Format Telegram Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [750, 1050]
+    },
+    {
+      "parameters": {
+        "updates": ["message"],
+        "additionalFields": {}
+      },
+      "id": "telegram-trigger-bot",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [0, 1400],
+      "webhookId": "b362e530-1a0a-466e-b12c-c4c66a7bb54e",
+      "credentials": {
+        "telegramApi": {
+          "id": "tsxHmM4QTfhfZGJn",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const staticData = $getWorkflowStaticData('global');\nconst chatId = String($json.message.chat.id);\nconst userMessage = $json.message.text || '';\nconst userName = $json.message.from.first_name || 'User';\n\nif (!staticData.conversations) staticData.conversations = {};\nif (!staticData.conversations[chatId]) staticData.conversations[chatId] = [];\n\nconst history = staticData.conversations[chatId].slice(-20);\n\nconst systemPrompt = 'You are a smart, friendly AI research assistant called Research Bot. You ONLY help with academic research, scientific topics, and educational questions.';\n\nconst messages = [{ role: 'system', content: systemPrompt }];\nfor (const msg of history) { messages.push({ role: msg.role, content: msg.content }); }\nmessages.push({ role: 'user', content: userMessage });\n\nreturn [{ json: { chat_id: chatId, user_name: userName, user_message: userMessage, messages_json: JSON.stringify(messages) }}];"
+      },
+      "id": "load-memory-tg",
+      "name": "Load Memory",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [250, 1400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "Bearer YOUR_GROQ_API_KEY_HERE" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'meta-llama/llama-4-scout-17b-16e-instruct', temperature: 0.7, max_tokens: 2000, messages: JSON.parse($json.messages_json) }) }}",
+        "options": { "response": { "response": { "responseFormat": "json" } } }
+      },
+      "id": "groq-research-bot-tg",
+      "name": "Research Assistant TG",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [500, 1400]
+    },
+    {
+      "parameters": {
+        "jsCode": "const staticData = $getWorkflowStaticData('global');\nconst chatId = $('Load Memory').item.json.chat_id;\nconst userMessage = $('Load Memory').item.json.user_message;\nconst botResponse = $json.choices[0].message.content;\n\nif (!staticData.conversations) staticData.conversations = {};\nif (!staticData.conversations[chatId]) staticData.conversations[chatId] = [];\n\nstaticData.conversations[chatId].push({ role: 'user', content: userMessage });\nstaticData.conversations[chatId].push({ role: 'assistant', content: botResponse });\n\nif (staticData.conversations[chatId].length > 40) { staticData.conversations[chatId] = staticData.conversations[chatId].slice(-40); }\n\nreturn [{ json: { text: botResponse, chat_id: chatId }}];"
+      },
+      "id": "save-memory-tg",
+      "name": "Save Memory",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [750, 1400]
+    },
+    {
+      "parameters": {
+        "jsCode": "let response = $json.text;\nconst chatId = $json.chat_id;\nconst maxLen = 4000;\nresponse = response.replace(/\\*/g, '').replace(/_/g, '').replace(/\\u0060\\u0060\\u0060/g, '').replace(/\\u0060/g, '');\nif (response.length <= maxLen) { return [{ json: { text: response, chat_id: chatId } }]; }\nconst parts = [];\nlet current = '';\nfor (const para of response.split('\\n\\n')) {\n  if ((current + '\\n\\n' + para).length > maxLen && current) { parts.push(current.trim()); current = para; }\n  else { current = current ? current + '\\n\\n' + para : para; }\n}\nif (current.trim()) parts.push(current.trim());\nreturn parts.map(t => ({ json: { text: t, chat_id: chatId } }));"
+      },
+      "id": "format-response-tg",
+      "name": "Format Response TG",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1000, 1400]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {}
+      },
+      "id": "send-telegram-out",
+      "name": "Send to Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1250, 1400],
+      "webhookId": "f8a358b3-aa70-408b-9ba3-b86d8f85925c",
+      "credentials": {
+        "telegramApi": {
+          "id": "tsxHmM4QTfhfZGJn",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "chatbot-in",
+        "responseMode": "lastNode"
+      },
+      "id": "webhook-chatbot-trigger",
+      "name": "Webhook Chatbot",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [0, 1750]
+    },
+    {
+      "parameters": {
+        "jsCode": "const userMessage = $json.body.message || '';\nconst providedHistory = $json.body.history || [];\n\nconst systemPrompt = 'You are a smart, friendly AI research assistant called Research Bot. You ONLY help with academic research, scientific topics, and educational questions.\\n\\nCAPABILITIES:\\n- Discuss academic and scientific topics in depth\\n- Help formulate research questions and hypotheses\\n- Suggest methodologies and research approaches\\n- Explain complex scientific concepts simply\\n- Brainstorm research ideas and provide feedback\\n- Remember ALL previous conversations with the user\\n\\nCONTENT RESTRICTION (VERY IMPORTANT):\\n- You ONLY discuss academic, scientific, research, and educational topics\\n- If the user asks about NON-ACADEMIC topics like: sports results, match scores, football, entertainment, celebrities, gossip, politics, news, weather, cooking, games, music, movies, etc. - you MUST politely decline\\n- When declining, say something like: I am a research assistant specialized in academic topics only. I cannot help with this topic. Feel free to ask me about any research or scientific topic!\\n- NEVER answer non-academic questions no matter what\\n\\nRULES:\\n1. ALWAYS respond in the SAME LANGUAGE as the user message\\n2. Be warm, friendly, and engaging\\n3. Use emojis to make responses lively\\n4. DO NOT use * or _ for formatting - use emojis and line breaks instead\\n5. Keep responses clear and well-structured\\n6. If you do not know something, say so honestly\\n7. Reference previous conversations when relevant\\n8. When the user greets you, greet them back warmly by name and remind them you are a research assistant';\n\nconst messages = [{ role: 'system', content: systemPrompt }];\nfor (const msg of providedHistory) { \n  if (msg.role && msg.content) {\n    messages.push({ role: msg.role, content: msg.content }); \n  }\n}\nmessages.push({ role: 'user', content: userMessage });\n\nreturn [{ json: { user_message: userMessage, messages_json: JSON.stringify(messages) }}];"
+      },
+      "id": "parse-website-input",
+      "name": "Parse Chat History",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [250, 1750]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "Bearer YOUR_GROQ_API_KEY_HERE" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'meta-llama/llama-4-scout-17b-16e-instruct', temperature: 0.7, max_tokens: 2000, messages: JSON.parse($json.messages_json) }) }}",
+        "options": { "response": { "response": { "responseFormat": "json" } } }
+      },
+      "id": "groq-research-bot-ui",
+      "name": "Research Assistant UI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [500, 1750]
+    },
+    {
+      "parameters": {
+        "jsCode": "let botResponse = $json.choices[0].message.content;\nbotResponse = botResponse.replace(/\\*/g, '').replace(/_/g, '').replace(/\\u0060\\u0060\\u0060/g, '').replace(/\\u0060/g, '');\nreturn [{ json: { output: botResponse } }];"
+      },
+      "id": "format-website-output",
+      "name": "Return to Website",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [750, 1750]
+    }
+  ],
+  "connections": {
+    "Researcher Input": { "main": [[{"node": "LLM Query Expansion", "type": "main", "index": 0}]] },
+    "LLM Query Expansion": { "main": [[{"node": "Parse Expanded Queries", "type": "main", "index": 0}]] },
+    "Parse Expanded Queries": { "main": [[{"node": "Search arXiv", "type": "main", "index": 0}]] },
+    "Search arXiv": { "main": [[{"node": "Parse arXiv XML", "type": "main", "index": 0}]] },
+    "Parse arXiv XML": { "main": [[{"node": "Validate PDF Access", "type": "main", "index": 0}]] },
+    "Validate PDF Access": { "main": [[{"node": "Accessible?", "type": "main", "index": 0}]] },
+    "Accessible?": {
+      "main": [
+        [{"node": "Trigger Jetson Ingestion", "type": "main", "index": 0}],
+        [{"node": "Log Blocked Paper", "type": "main", "index": 0}]
+      ]
+    },
+    "Ingestion Complete": { "main": [[{"node": "Success?", "type": "main", "index": 0}]] },
+    "Success?": { "main": [[{"node": "Trigger Report Generation", "type": "main", "index": 0}]] },
+    "Researcher Question": { "main": [[{"node": "Backend Groq + RAG", "type": "main", "index": 0}]] },
+    "Backend Groq + RAG": { "main": [[{"node": "Format Final Response", "type": "main", "index": 0}]] },
+    "Telegram Bridge In": { "main": [[{"node": "Normalize Telegram Payload", "type": "main", "index": 0}]] },
+    "Normalize Telegram Payload": { "main": [[{"node": "Call Backend Research", "type": "main", "index": 0}]] },
+    "Call Backend Research": { "main": [[{"node": "Format Telegram Reply", "type": "main", "index": 0}]] },
+    "Telegram Trigger": { "main": [[{"node": "Load Memory", "type": "main", "index": 0}]] },
+    "Load Memory": { "main": [[{"node": "Research Assistant TG", "type": "main", "index": 0}]] },
+    "Research Assistant TG": { "main": [[{"node": "Save Memory", "type": "main", "index": 0}]] },
+    "Save Memory": { "main": [[{"node": "Format Response TG", "type": "main", "index": 0}]] },
+    "Format Response TG": { "main": [[{"node": "Send to Telegram", "type": "main", "index": 0}]] },
+    "Webhook Chatbot": { "main": [[{"node": "Parse Chat History", "type": "main", "index": 0}]] },
+    "Parse Chat History": { "main": [[{"node": "Research Assistant UI", "type": "main", "index": 0}]] },
+    "Research Assistant UI": { "main": [[{"node": "Return to Website", "type": "main", "index": 0}]] }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  }
+}

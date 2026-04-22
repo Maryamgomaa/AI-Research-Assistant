@@ -1,0 +1,775 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI Research Assistant</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <link href="/static/style.css" rel="stylesheet" />
+    <style>
+      body {
+        transition: background-color 0.3s, color 0.3s;
+      }
+      .report-card {
+        margin-bottom: 1rem;
+        padding: 1rem;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: var(--bg-card);
+        color: var(--text);
+      }
+      .chatbot-messages {
+        max-height: 320px;
+        overflow-y: auto;
+      }
+      .chatbot-message {
+        margin-bottom: 0.75rem;
+        padding: 0.85rem 1rem;
+        border-radius: 1rem;
+        word-break: break-word;
+      }
+      .chatbot-message.user {
+        background: rgba(13, 110, 253, 0.1);
+        color: #04236d;
+        text-align: right;
+      }
+      .chatbot-message.assistant {
+        background: rgba(248, 249, 250, 0.95);
+        color: #1f2937;
+        text-align: left;
+      }
+      [data-theme="dark"] .chatbot-message.assistant {
+        background: rgba(51, 65, 85, 0.95);
+        color: #f1f5f9;
+      }
+      [data-theme="dark"] .chatbot-message.user {
+        background: rgba(99, 102, 241, 0.2);
+        color: #e0e7ff;
+      }
+      .chatbot-messages {
+        min-height: 220px;
+        border: 1px solid var(--border-color, #e2e8f0);
+        border-radius: 12px;
+        padding: 12px;
+        background: var(--bg-tertiary, #f8fafc);
+      }
+      [data-theme="dark"] .chatbot-messages {
+        background: rgba(15, 23, 42, 0.5);
+        border-color: var(--border-color, #475569);
+      }
+      .research-answer {
+        font-size: 1rem;
+        line-height: 1.65;
+      }
+      .modal-auth .form-control:focus {
+        border-color: #6366f1;
+        box-shadow: 0 0 0 0.2rem rgba(99, 102, 241, 0.2);
+      }
+      /* ChatGPT-style: fixed sidebar + scrollable main with all workspace fields */
+      .cg-app-main {
+        padding-top: var(--nav-height, 70px);
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
+      .cg-workspace {
+        flex: 1;
+        display: flex;
+        min-height: 0;
+        width: 100%;
+        max-width: 100%;
+      }
+      .cg-sidebar {
+        width: 260px;
+        flex-shrink: 0;
+        display: flex;
+        flex-direction: column;
+        border-right: 1px solid var(--border-color, #e2e8f0);
+        background: var(--bg-tertiary, #f1f5f9);
+        min-height: calc(100vh - var(--nav-height, 70px));
+      }
+      [data-theme="dark"] .cg-sidebar {
+        background: #0f172a;
+        border-right-color: #1e293b;
+      }
+      .cg-sidebar-top {
+        padding: 12px 12px 8px;
+        flex-shrink: 0;
+      }
+      .cg-btn-new-chat {
+        width: 100%;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 10px 14px;
+        border-radius: 10px;
+        border: 1px solid var(--border-color, #cbd5e1);
+        background: var(--bg-card, #fff);
+        color: var(--text, #0f172a);
+        font-size: 0.875rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background 0.15s, border-color 0.15s;
+      }
+      .cg-btn-new-chat:hover:not(:disabled) {
+        background: var(--bg-tertiary, #f8fafc);
+        border-color: #94a3b8;
+      }
+      .cg-btn-new-chat:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+      [data-theme="dark"] .cg-btn-new-chat {
+        background: #1e293b;
+        border-color: #334155;
+        color: #f1f5f9;
+      }
+      [data-theme="dark"] .cg-btn-new-chat:hover:not(:disabled) {
+        background: #334155;
+      }
+      .cg-sidebar-head {
+        padding: 4px 14px 10px;
+        flex-shrink: 0;
+      }
+      .cg-sidebar-label {
+        font-size: 0.7rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--text-muted, #64748b);
+      }
+      .cg-main {
+        flex: 1;
+        min-width: 0;
+        overflow-y: auto;
+        overflow-x: hidden;
+        background: var(--bg-body, #fff);
+      }
+      [data-theme="dark"] .cg-main {
+        background: var(--bg-body, #020617);
+      }
+      .cg-main-inner {
+        width: 100%;
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 1.75rem 1.25rem 5rem;
+      }
+      .cg-main-hero-title {
+        font-size: clamp(1.5rem, 4vw, 2rem);
+        font-weight: 600;
+        letter-spacing: -0.02em;
+        margin-bottom: 0.5rem;
+        color: var(--text, #0f172a);
+      }
+      [data-theme="dark"] .cg-main-hero-title {
+        color: #f8fafc;
+      }
+      .cg-main-hero-sub {
+        font-size: 0.95rem;
+        max-width: 36rem;
+        margin-left: auto;
+        margin-right: auto;
+        line-height: 1.5;
+      }
+      /* Light mode: match chat history sidebar panel (#f1f5f9) */
+      .cg-workspace .card {
+        border-radius: 12px;
+        border: 1px solid var(--border-color, #e2e8f0);
+        margin-bottom: 1rem;
+        background: var(--bg-tertiary, #f1f5f9);
+      }
+      [data-theme="dark"] .cg-workspace .card {
+        background: var(--bg-card, #1e293b);
+        border-color: #334155;
+      }
+      .cg-ask-bar {
+        border-radius: 999px;
+        border: 1px solid var(--border-color, #e2e8f0);
+        padding: 4px 4px 4px 16px;
+        background: var(--bg-card, #fff);
+        display: flex;
+        align-items: flex-end;
+        gap: 8px;
+        margin-top: 0.5rem;
+      }
+      [data-theme="dark"] .cg-ask-bar {
+        background: #1e293b;
+        border-color: #475569;
+      }
+      .cg-ask-bar textarea {
+        border: none !important;
+        box-shadow: none !important;
+        background: transparent !important;
+        resize: none;
+        padding: 10px 0;
+      }
+      .cg-ask-bar textarea:focus {
+        outline: none;
+      }
+      .cg-ask-bar .btn {
+        border-radius: 999px;
+        padding-left: 1.25rem;
+        padding-right: 1.25rem;
+        flex-shrink: 0;
+        margin-bottom: 2px;
+        margin-right: 2px;
+      }
+      .chat-sidebar-list {
+        overflow-y: auto;
+        flex: 1;
+        min-height: 120px;
+      }
+      .chat-sidebar-item {
+        cursor: pointer;
+        border: none;
+        border-bottom: 1px solid var(--border-color, #e2e8f0);
+        width: 100%;
+        text-align: left;
+        padding: 10px 12px;
+        background: transparent;
+        transition: background 0.15s;
+      }
+      .chat-sidebar-item:hover {
+        background: rgba(99, 102, 241, 0.08);
+      }
+      .chat-sidebar-item.active {
+        background: rgba(99, 102, 241, 0.15);
+        border-left: 3px solid #6366f1;
+      }
+      .chat-sidebar-item .chat-item-title {
+        font-size: 0.8125rem;
+        font-weight: 600;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      .chat-sidebar-item .chat-item-meta {
+        font-size: 0.7rem;
+        color: var(--text-muted, #64748b);
+        margin-top: 4px;
+      }
+      /* Assistant dock — above FAB */
+      .assistant-dock-wrap {
+        position: fixed;
+        right: 12px;
+        bottom: 24px;
+        left: auto;
+        z-index: 1040;
+        width: auto;
+        max-width: min(380px, calc(100vw - 24px));
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        pointer-events: none;
+      }
+      .assistant-dock-wrap * {
+        pointer-events: auto;
+      }
+      .assistant-dock {
+        display: none;
+        flex-direction: column;
+        width: min(380px, calc(100vw - 24px));
+        max-height: min(550px, 80vh);
+        border-radius: 16px;
+        border: 1px solid var(--border-color, #e2e8f0);
+        background: var(--bg-card, #fff);
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+        overflow: hidden;
+        margin-bottom: 10px;
+      }
+      [data-theme="dark"] .assistant-dock {
+        background: var(--bg-card, #1e293b);
+        border-color: #475569;
+      }
+      .assistant-dock.open {
+        display: flex;
+      }
+      .assistant-dock-header {
+        padding: 12px 14px;
+        border-bottom: 1px solid var(--border-color, #e2e8f0);
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .assistant-dock-body {
+        padding: 12px;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        flex: 1;
+        overflow-y: auto;
+      }
+      .assistant-dock .chatbot-messages {
+        flex: 1;
+        max-height: 220px;
+        min-height: 160px;
+      }
+      body.has-assistant-open .chatbot-icon {
+        box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.35);
+      }
+      .assistant-dock-wrap .chatbot-icon {
+        position: relative;
+        bottom: auto;
+        right: auto;
+        flex-shrink: 0;
+        align-self: flex-end;
+      }
+      .research-thread-scroll {
+        max-height: 420px;
+        overflow-y: auto;
+        border: 1px solid var(--border-color, #e2e8f0);
+        border-radius: 12px;
+        padding: 12px;
+        background: var(--bg-tertiary, #f1f5f9);
+        margin-bottom: 1rem;
+      }
+      [data-theme="dark"] .research-thread-scroll {
+        background: rgba(15, 23, 42, 0.45);
+        border-color: #475569;
+      }
+      .research-bubble {
+        max-width: 92%;
+        padding: 10px 14px;
+        border-radius: 14px;
+        margin-bottom: 10px;
+        font-size: 0.9rem;
+        line-height: 1.55;
+        word-break: break-word;
+      }
+      .research-bubble.user {
+        margin-left: auto;
+        background: rgba(99, 102, 241, 0.15);
+        border: 1px solid rgba(99, 102, 241, 0.25);
+      }
+      .research-bubble.assistant {
+        margin-right: auto;
+        background: var(--bg-card, #fff);
+        border: 1px solid var(--border-color, #e2e8f0);
+      }
+      [data-theme="dark"] .research-bubble.assistant {
+        background: #334155;
+        border-color: #475569;
+      }
+      @media (max-width: 991px) {
+        .cg-workspace {
+          flex-direction: column;
+        }
+        .cg-sidebar {
+          width: 100%;
+          min-height: auto;
+          max-height: 300px;
+          border-right: none;
+          border-bottom: 1px solid var(--border-color, #e2e8f0);
+        }
+        [data-theme="dark"] .cg-sidebar {
+          border-bottom-color: #1e293b;
+        }
+      }
+      .help-q-btn {
+        width: 2rem;
+        height: 2rem;
+        padding: 0;
+        line-height: 1;
+        font-weight: 700;
+        font-size: 0.95rem;
+      }
+      .cg-workspace-card h2.h6 {
+        letter-spacing: 0.04em;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Navigation -->
+    <nav class="navbar">
+      <a href="/" class="navbar-brand">AI Research Assistant</a>
+      <div class="navbar-actions">
+        <button
+          type="button"
+          class="btn btn-sm btn-outline-secondary help-q-btn"
+          id="helpGuideBtn"
+          data-bs-toggle="modal"
+          data-bs-target="#guideModal"
+          aria-label="Help — how this site works"
+          title="Help"
+        >
+          ?
+        </button>
+        <button type="button" id="themeToggle" class="theme-toggle" aria-label="Toggle light or dark theme"></button>
+        <div id="userSessionBar" class="d-flex align-items-center gap-2" hidden>
+          <span class="badge rounded-pill bg-primary d-inline-flex align-items-center justify-content-center" id="sessionUserAvatar" style="width:2rem;height:2rem;font-size:0.85rem;">U</span>
+          <span id="sessionUserName" class="small fw-semibold" style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+          <button type="button" class="btn btn-outline-secondary btn-sm" id="sessionSignOut">Sign out</button>
+        </div>
+        <button type="button" id="loginBtn" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#loginModal">Sign in</button>
+        <button type="button" id="registerBtn" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#registerModal">Create account</button>
+      </div>
+    </nav>
+
+    <!-- Main Content: ChatGPT-style sidebar + single main pane with every workspace field -->
+    <main class="cg-app-main">
+      <div class="cg-workspace">
+        <aside class="cg-sidebar" id="researchChatSidebar" aria-label="Research chats">
+          <div class="cg-sidebar-top">
+            <button type="button" class="cg-btn-new-chat" id="sidebarNewChatBtn" title="Start a new chat — clears all fields in the main area">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 20h9"></path>
+                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+              </svg>
+              New chat
+            </button>
+          </div>
+          <div class="cg-sidebar-head">
+            <div class="cg-sidebar-label">Chats</div>
+          </div>
+          <div class="chat-sidebar-list list-group list-group-flush rounded-0 border-0" id="chatHistorySidebarList"></div>
+        </aside>
+
+        <div class="cg-main">
+          <div class="cg-main-inner">
+            <header class="cg-main-hero text-center mb-4 px-1">
+              <h1 class="cg-main-hero-title">Discover, summarize, and query research papers.</h1>
+            </header>
+
+        <div class="card cg-workspace-card border-0 shadow-sm">
+          <div class="card-body p-4">
+            <section class="mb-4" aria-labelledby="discover-heading">
+              <h2 id="discover-heading" class="h6 text-uppercase text-muted mb-3">Discover papers</h2>
+              <form id="discoverForm">
+                <div class="row g-3">
+                  <div class="col-md-6">
+                    <label for="topic" class="form-label">Research topic</label>
+                    <input
+                      type="text"
+                      class="form-control"
+                      id="topic"
+                      placeholder="e.g., Arabic NLP, machine translation, explainable AI"
+                    />
+                  </div>
+                  <div class="col-md-6">
+                    <label for="sources" class="form-label">Search source</label>
+                    <select id="sources" class="form-select" multiple>
+                      <option value="arxiv" selected>arXiv</option>
+                      <option value="google_scholar">Google Scholar</option>
+                      <option value="semantic_scholar">Semantic Scholar</option>
+                      <option value="pubmed">PubMed</option>
+                      <option value="openreview">OpenReview</option>
+                      <option value="web">General web sources</option>
+                    </select>
+                    <div class="form-text">Hold Ctrl/Cmd to select multiple sources.</div>
+                  </div>
+                  <div class="col-md-4">
+                    <label for="citationThreshold" class="form-label">Citation threshold (min)</label>
+                    <input
+                      type="number"
+                      class="form-control"
+                      id="citationThreshold"
+                      min="0"
+                      placeholder="Blank = no minimum"
+                    />
+                  </div>
+                  <div class="col-md-4">
+                    <label for="sortOrder" class="form-label">Sort by</label>
+                    <select id="sortOrder" class="form-select">
+                      <option value="submittedDate">Most recent</option>
+                      <option value="relevance">Most relevant</option>
+                    </select>
+                  </div>
+                  <div class="col-md-4">
+                    <label for="categories" class="form-label">Categories (comma-separated)</label>
+                    <input
+                      type="text"
+                      class="form-control"
+                      id="categories"
+                      placeholder="e.g., cs.CL, cs.LG"
+                    />
+                  </div>
+                  <div class="col-md-4">
+                    <label for="maxResults" class="form-label">Max results</label>
+                    <input
+                      type="number"
+                      class="form-control"
+                      id="maxResults"
+                      value="5"
+                      min="1"
+                      max="50"
+                    />
+                  </div>
+                  <div class="col-12">
+                    <button type="submit" class="btn btn-primary">Discover papers</button>
+                  </div>
+                </div>
+              </form>
+            </section>
+
+            <hr class="my-4 text-muted opacity-25" />
+
+            <section id="papersSection" class="mb-4" style="display: none;" aria-labelledby="papers-found-heading">
+              <h2 id="papers-found-heading" class="h6 text-uppercase text-muted mb-3">Discovered papers</h2>
+              <div id="papersList" class="list-group"></div>
+              <div class="mt-3">
+                <button type="button" id="ingestPapersBtn" class="btn btn-primary">Ingest selected papers</button>
+              </div>
+            </section>
+
+            <hr class="my-4 text-muted opacity-25" />
+
+            <section class="mb-4" aria-labelledby="optional-heading">
+              <h2 id="optional-heading" class="h6 text-uppercase text-muted mb-2">Context &amp; reference PDFs</h2>
+              <div class="mb-3">
+                <label for="sessionContext" class="form-label">Context / pasted text</label>
+                <textarea class="form-control" id="sessionContext" rows="4" placeholder="Optional notes, abstracts, or excerpts for the AI to consider…"></textarea>
+              </div>
+              <div class="mb-2">
+                <label for="sessionPdfInput" class="form-label">Reference PDFs</label>
+                <input type="file" class="form-control form-control-sm" id="sessionPdfInput" accept=".pdf" multiple />
+                <div class="form-text">Optional. Sign in required. You can select <strong>multiple PDFs</strong> in one go (Ctrl/Cmd+click).</div>
+              </div>
+              <p class="small fw-semibold text-muted mb-1 mt-3">Reference PDFs uploaded</p>
+              <ul class="list-unstyled small mb-0" id="sessionPdfList"></ul>
+            </section>
+
+            <hr class="my-4 text-muted opacity-25" />
+
+            <div id="researchThreadScroll" class="research-thread-scroll mb-3"></div>
+            <form id="qaForm">
+              <label for="question" class="form-label">Your question</label>
+              <div class="cg-ask-bar">
+                <textarea
+                  class="form-control flex-grow-1"
+                  id="question"
+                  rows="1"
+                  placeholder="Ask about discovery results, pasted context, or any uploaded PDF…"
+                  required
+                ></textarea>
+                <button type="submit" class="btn btn-primary">Send</button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <!-- Legacy answer card removed — thread shown above -->
+        <div id="answerSection" class="d-none" aria-hidden="true">
+          <div id="answerText"></div>
+          <ul id="sourcesList"></ul>
+        </div>
+
+        <!-- Analysis Report Section -->
+        <div id="analysisReportSection" class="card" style="display: none;">
+          <div class="card-header">
+            <h5>📊 Analysis & Research Report</h5>
+          </div>
+          <div class="card-body">
+            <div id="analysisReportContent"></div>
+          </div>
+        </div>
+
+        <!-- AI final consolidated report (from analysis above) -->
+        <div id="finalReportSection" class="card" style="display: none;">
+          <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+            <div>
+              <h5 class="mb-0">AI final report</h5>
+              <p class="small text-muted mb-0">One executive write-up synthesizing the paper analyses above.</p>
+            </div>
+            <button type="button" class="btn btn-sm btn-primary" id="generateFinalReportBtn">Generate final report</button>
+          </div>
+          <div class="card-body">
+            <p id="finalReportStatus" class="small text-muted mb-2" style="min-height:1.25rem;"></p>
+            <label for="finalReportBody" class="form-label small text-muted">Generated output</label>
+            <textarea id="finalReportBody" class="form-control font-monospace small" rows="14" readonly placeholder="Click “Generate final report” after per-paper analysis is ready."></textarea>
+          </div>
+        </div>
+
+        <!-- Reports Section -->
+        <div id="reportsSection" class="card" style="display: none;">
+          <div class="card-header">
+            <h5>Generated Reports</h5>
+          </div>
+          <div class="card-body">
+            <div id="reportsList"></div>
+          </div>
+        </div>
+
+            <div id="status" class="alert mt-3" style="display: none;"></div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- AI Guide/Help Modal -->
+    <div class="modal fade" id="guideModal" tabindex="-1" aria-labelledby="guideModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="guideModalLabel">📚 AI Research Assistant Guide</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body guide-content">
+            <p class="text-muted small mb-3">Open this anytime from the <strong>?</strong> button next to the theme toggle.</p>
+
+            <div class="guide-section">
+              <h6 class="guide-title">Layout</h6>
+              <ul class="small mb-0">
+                <li><strong>Left sidebar:</strong> Saved chat sessions. Click a row to reopen that conversation.</li>
+                <li><strong>New chat:</strong> Saves the current workspace if it has any content (messages, topic search results, notes, or uploads), then clears all fields so you start clean.</li>
+                <li><strong>Main column:</strong> One workspace — discovery, optional context/reference PDFs, message thread, and question box.</li>
+              </ul>
+            </div>
+
+            <div class="guide-section">
+              <h6 class="guide-title">Discover papers</h6>
+              <ul class="small mb-0">
+                <li>Enter a <strong>research topic</strong> and run search (currently wired to arXiv discovery on the server).</li>
+                <li>Adjust <strong>sources</strong> (multi-select), <strong>categories</strong>, <strong>sort</strong>, <strong>citation threshold</strong>, and <strong>max results</strong>.</li>
+                <li>Results appear below; select papers and use <strong>Ingest selected papers</strong> (sign-in required) to generate per-paper analysis and optional final report sections further down the page.</li>
+              </ul>
+            </div>
+
+            <div class="guide-section">
+              <h6 class="guide-title">Context &amp; reference PDFs</h6>
+              <ul class="small mb-0">
+                <li><strong>Analysis &amp; reports:</strong> Generated by the workflow (discover → ingest → sections below), not uploaded by you.</li>
+                <li><strong>Context / pasted text:</strong> Optional notes or excerpts for the model.</li>
+                <li><strong>Reference PDFs:</strong> The only optional uploads; sign-in required. Use <strong>Download</strong> next to a file to save your copy from the server.</li>
+              </ul>
+            </div>
+
+            <div class="guide-section">
+              <h6 class="guide-title">Questions &amp; AI behavior</h6>
+              <p class="small mb-0">
+                Use <strong>Your question</strong> / <strong>Send</strong> for the research assistant. The model uses discovery results, optional context and reference PDF names, and any on-screen analysis or final-report text the app has produced.
+                Replies appear in the thread above the input. The floating <strong>chat</strong> button is a separate helper for search tips, prompts, and n8n/Groq usage.
+              </p>
+            </div>
+
+            <div class="guide-section">
+              <h6 class="guide-title">Account &amp; data</h6>
+              <ul class="small mb-0">
+                <li><strong>Sign in</strong> is required for PDF upload, ingest, downloads, and server-side history where enabled.</li>
+                <li>Chat list and session fields are stored in <strong>this browser</strong> (localStorage) unless the server also records history.</li>
+                <li>Use <strong>Sign out</strong> from the top bar when finished on a shared computer.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sign in -->
+    <div class="modal fade" id="loginModal" tabindex="-1" aria-labelledby="loginModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content modal-auth">
+          <div class="modal-header border-0 pb-0">
+            <div>
+              <h5 class="modal-title" id="loginModalLabel">Sign in</h5>
+              <p class="small text-muted mb-0">Access your library, uploads, and saved Q&amp;A history.</p>
+            </div>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body pt-2">
+            <div id="loginAlert" class="alert alert-danger d-none" role="alert"></div>
+            <form id="loginForm" novalidate>
+              <div class="mb-3">
+                <label for="loginUsername" class="form-label">Username</label>
+                <input type="text" class="form-control" id="loginUsername" autocomplete="username" required placeholder="Your username" />
+              </div>
+              <div class="mb-3">
+                <label for="loginPassword" class="form-label">Password</label>
+                <input type="password" class="form-control" id="loginPassword" autocomplete="current-password" required placeholder="••••••••" />
+              </div>
+              <button type="submit" class="btn btn-primary w-100">Sign in</button>
+            </form>
+            <p class="text-center small text-muted mt-3 mb-0">
+              New here?
+              <a href="#" class="link-primary text-decoration-none" onclick="event.preventDefault(); switchAuthModal('loginModal','registerModal');">Create an account</a>
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Create account -->
+    <div class="modal fade" id="registerModal" tabindex="-1" aria-labelledby="registerModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content modal-auth">
+          <div class="modal-header border-0 pb-0">
+            <div>
+              <h5 class="modal-title" id="registerModalLabel">Create account</h5>
+              <p class="small text-muted mb-0">Your profile is stored in the local database; you’ll be signed in automatically.</p>
+            </div>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body pt-2">
+            <div id="regAlert" class="alert alert-danger d-none" role="alert"></div>
+            <form id="registerForm" novalidate>
+              <div class="mb-3">
+                <label for="regUsername" class="form-label">Username</label>
+                <input type="text" class="form-control" id="regUsername" autocomplete="username" required minlength="3" placeholder="At least 3 characters" />
+              </div>
+              <div class="mb-3">
+                <label for="regEmail" class="form-label">Email</label>
+                <input type="email" class="form-control" id="regEmail" autocomplete="email" required placeholder="you@university.edu" />
+              </div>
+              <div class="mb-3">
+                <label for="regPassword" class="form-label">Password</label>
+                <input type="password" class="form-control" id="regPassword" autocomplete="new-password" required minlength="8" placeholder="At least 8 characters" />
+                <div class="form-text">Use at least 8 characters. You can change this later if the backend adds a reset flow.</div>
+              </div>
+              <button type="submit" class="btn btn-primary w-100">Create account</button>
+            </form>
+            <p class="text-center small text-muted mt-3 mb-0">
+              Already have an account?
+              <a href="#" class="link-primary text-decoration-none" onclick="event.preventDefault(); switchAuthModal('registerModal','loginModal');">Sign in</a>
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Assistant dock (panel above FAB) -->
+    <div class="assistant-dock-wrap" id="assistantDockWrap">
+      <div class="assistant-dock" id="assistantDock" aria-hidden="true">
+        <div class="assistant-dock-header">
+          <div>
+            <div class="fw-semibold">Research assistant</div>
+            <div class="small text-muted">Search · Prompts · n8n · Groq</div>
+          </div>
+          <div class="d-flex gap-1">
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="chatbotClearBtn" title="Clear">Clear</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="assistantDockClose" title="Close" aria-label="Close assistant">×</button>
+          </div>
+        </div>
+        <div class="assistant-dock-body">
+          <p id="chatbotStatus" class="small text-muted mb-2" style="min-height:1.25rem;"></p>
+          <div id="chatbotMessages" class="chatbot-messages mb-2"></div>
+          <p class="small text-muted mb-1">Quick prompts</p>
+          <div class="d-flex flex-wrap gap-1 mb-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary chatbot-quick" data-prompt="How should I search arXiv for Arabic NLP papers?">Arabic NLP</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary chatbot-quick" data-prompt="Give me a prompt template to extract novel research ideas from NLP papers.">NLP prompts</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary chatbot-quick" data-prompt="How can I connect Groq to n8n for a research Q&amp;A workflow?">Groq + n8n</button>
+          </div>
+          <form id="chatbotForm" class="d-flex flex-column gap-2">
+            <input id="chatbotQuestion" type="text" class="form-control form-control-sm" placeholder="Ask about search, prompts, or n8n…" autocomplete="off" />
+            <button type="submit" class="btn btn-primary btn-sm">Send</button>
+          </form>
+        </div>
+      </div>
+      <button type="button" id="chatbotBtn" class="chatbot-icon" aria-label="Toggle research assistant" aria-expanded="false">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+        </svg>
+      </button>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/static/legacy-app.js"></script>
+  </body>
+</html>

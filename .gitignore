@@ -1,0 +1,57 @@
+# ============================================================
+# .gitignore — AI Research Assistant
+# ============================================================
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environment
+.venv/
+venv/
+env/
+ENV/
+
+# Environment secrets
+.env
+temp_env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Database (local SQLite)
+*.db
+*.sqlite3
+
+# Logs
+logs/
+*.log
+
+# PDF cache
+/tmp/arxiv_pdfs/
+uploads/
+
+# Evaluation plots (regenerated on demand)
+evaluation/plots/
+evaluation/__pycache__/
+
+# n8n local data
+n8n_data/
+
+# Misc
+*.bak
+*.tmp
