@@ -22,7 +22,8 @@ import httpx
 from fastapi import FastAPI, HTTPException, Request, Depends, File, UploadFile, Form, Header
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, FileResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -37,6 +38,7 @@ from .web_search import SerpapiSearcher
 from .models import User, ChatHistory, create_tables
 from .auth import (
     get_current_user,
+    get_current_user_optional,
     get_password_hash,
     verify_password,
     create_access_token,
@@ -251,8 +253,19 @@ class ChatHistoryResponse(BaseModel):
     sources: str
     created_at: datetime
 
+class RemovePdfRequest(BaseModel):
+    paper_id: str
+
 
 app = FastAPI(title="Jetson Nano Research Worker", version="1.0.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Mount static files and templates
 app.mount("/static", StaticFiles(directory="worker/static"), name="static")
@@ -326,6 +339,24 @@ def get_chat_history(current_user: User = Depends(get_current_user), db: Session
         created_at=h.created_at
     ) for h in histories]
 
+class ChatHistoryCreate(BaseModel):
+    question: str
+    answer: str
+    sources: Optional[str] = "[]"
+
+@app.post("/chat_history")
+def create_chat_history(item: ChatHistoryCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    chat_entry = ChatHistory(
+        user_id=current_user.id,
+        question=item.question,
+        answer=item.answer,
+        sources=item.sources
+    )
+    db.add(chat_entry)
+    db.commit()
+    db.refresh(chat_entry)
+    return {"status": "success", "id": chat_entry.id}
+
 @app.post("/upload_paper")
 @app.post("/upload_pdf")
 async def upload_paper(
@@ -352,6 +383,31 @@ async def upload_paper(
     results = await get_worker().batch_ingest([paper_meta])
     rid = paper_meta.get("arxiv_id", "")
     return {"results": results, "paper_id": rid, "paperId": rid}
+
+
+@app.get("/paper_file/{paper_id}")
+async def get_paper_file(paper_id: str, current_user: User = Depends(get_current_user)):
+    if not paper_id.startswith(f"user_{current_user.id}_"):
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    safe_name = paper_id.replace(f"user_{current_user.id}_", "")
+    file_path = Path("uploads") / safe_name
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+        
+    return FileResponse(file_path, filename=safe_name)
+
+@app.post("/remove_reference_pdf")
+async def remove_reference_pdf(req: RemovePdfRequest, current_user: User = Depends(get_current_user)):
+    if not req.paper_id.startswith(f"user_{current_user.id}_"):
+        raise HTTPException(status_code=403, detail="Access denied")
+        
+    safe_name = req.paper_id.replace(f"user_{current_user.id}_", "")
+    file_path = Path("uploads") / safe_name
+    if file_path.exists():
+        file_path.unlink()
+        
+    return {"status": "success", "message": "File removed"}
 
 
 def get_worker() -> IngestionWorker:
@@ -483,7 +539,7 @@ async def root(request: Request):
 
 
 @app.post("/discover")
-async def discover_endpoint(req: DiscoverRequest, current_user: User = Depends(get_current_user)):
+async def discover_endpoint(req: DiscoverRequest, current_user: Optional[User] = Depends(get_current_user_optional)):
     if not req.topic or req.topic.strip() == "":
         req.topic = "general research"
 

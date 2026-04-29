@@ -37,13 +37,17 @@ services:
       - "8000:8000"
     volumes:
       - /tmp/arxiv_pdfs:/tmp/arxiv_pdfs
+      - ./uploads:/app/uploads
+      - ./logs:/app/logs
+    env_file:
+      - .env
     environment:
       - QDRANT_HOST=qdrant
       - QDRANT_PORT=6333
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
       - EMBEDDING_DEVICE=cpu
       - EMBEDDING_MODEL=sentence-transformers/paraphrase-multilingual-mpnet-base-v2
-      - LOG_PATH=/tmp/ingestion.log
+      - LOG_PATH=/app/logs/ingestion.log
     depends_on:
       qdrant:
         condition: service_healthy
