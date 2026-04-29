@@ -4,5 +4,10 @@
 [phases.setup]
 aptPkgs = ["libmupdf-dev", "mupdf-tools", "build-essential"]
 
+[phases.build]
+cmds = [
+    "mkdir -p uploads uploads/telegram logs"
+]
+
 [start]
 cmd = "uvicorn worker.main:app --host 0.0.0.0 --port ${PORT:-8000}"
